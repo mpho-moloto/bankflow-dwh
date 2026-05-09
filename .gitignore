@@ -1,0 +1,35 @@
+# Environment
+.env
+
+# Generated data 
+data/raw/
+data/bronze/
+data/silver/
+exports/
+logs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+dist/
+*.egg-info/
+
+# dbt
+transformation/target/
+transformation/dbt_packages/
+transformation/logs/
+
+# IDE
+.vscode/
+.idea/
+*.DS_Store
+
+.spark-staging/         
+*.parquet                
+airflow.cfg              
+webserver_config.py     
+*.pid                   
+.dockerignore            
