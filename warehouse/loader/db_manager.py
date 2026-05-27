@@ -250,7 +250,7 @@ class GoldLoader:
         log.info(f"  Customers: {inserts:,} new, {updates:,} SCD2 updates")
 
     # ─────────────────────────────────────────────────────────
-    # ACCOUNTS — SCD TYPE 2
+    # ACCOUNTS — SCD TYPE 2 (with branch_key)
     # ─────────────────────────────────────────────────────────
 
     def load_accounts_scd2(self):
@@ -268,6 +268,12 @@ class GoldLoader:
         with self.engine.begin() as conn:
             for _, row in incoming.iterrows():
                 aid = row['account_id']
+
+                # Get branch_key from dim_branches using branch_id
+                branch_result = conn.execute(text("""
+                    SELECT branch_key FROM dim_branches WHERE branch_id = :branch_id LIMIT 1
+                """), {'branch_id': row['branch_id']}).fetchone()
+                branch_key = branch_result[0] if branch_result else None
 
                 # Resolve customer surrogate key (always use current row)
                 cust_key = conn.execute(text("""
@@ -290,17 +296,18 @@ class GoldLoader:
                             (account_id, customer_key, customer_id, account_type,
                              account_number, currency, credit_limit, interest_rate,
                              overdraft_limit, status, open_date, close_date,
-                             account_age_days,
+                             account_age_days, branch_key,
                              scd_start_date, scd_end_date, scd_is_current, scd_version,
                              dw_batch_id)
                         VALUES
                             (:account_id, :cust_key, :customer_id, :account_type,
                              :account_number, :currency, :credit_limit, :interest_rate,
                              :overdraft_limit, :status, :open_date, :close_date,
-                             :account_age_days,
+                             :account_age_days, :branch_key,
                              :today, NULL, TRUE, 1, :batch_id)
                     """), {**row.to_dict(),
                            'cust_key': cust_key,
+                           'branch_key': branch_key,
                            'today': today,
                            'batch_id': self.batch_id})
                     inserts += 1
@@ -326,17 +333,18 @@ class GoldLoader:
                                 (account_id, customer_key, customer_id, account_type,
                                  account_number, currency, credit_limit, interest_rate,
                                  overdraft_limit, status, open_date, close_date,
-                                 account_age_days,
+                                 account_age_days, branch_key,
                                  scd_start_date, scd_end_date, scd_is_current, scd_version,
                                  dw_batch_id)
                             VALUES
                                 (:account_id, :cust_key, :customer_id, :account_type,
                                  :account_number, :currency, :credit_limit, :interest_rate,
                                  :overdraft_limit, :status, :open_date, :close_date,
-                                 :account_age_days,
+                                 :account_age_days, :branch_key,
                                  :today, NULL, TRUE, :version, :batch_id)
                         """), {**row.to_dict(),
                                'cust_key': cust_key,
+                               'branch_key': branch_key,
                                'today': today,
                                'version': existing.scd_version + 1,
                                'batch_id': self.batch_id})
@@ -400,48 +408,48 @@ class GoldLoader:
         # INSERT from staging → fact, resolving all surrogate keys in one query
         # We join on scd_is_current = TRUE to always get the latest dimension version
         sql = text("""
-                    INSERT INTO fact_transactions (
-                        date_key, account_key, customer_key, merchant_key, branch_key,
-                        txn_type_key, transaction_id, transaction_date, transaction_time,
-                        transaction_hour, amount, is_debit, balance_after, status,
-                        is_fraud_flag, fraud_score, fraud_risk_band, is_weekend,
-                        is_night_transaction, amount_band, daily_txn_count,
-                        daily_spend_total, reference, description, channel, dw_batch_id
-                    )
-                    SELECT
-                        TO_CHAR(stg.transaction_date, 'YYYYMMDD')::INT  AS date_key,
-                        a.account_key,
-                        a.customer_key,
-                        m.merchant_key,
-                        b.branch_key,
-                        t.txn_type_key,
-                        stg.transaction_id,
-                        stg.transaction_date,
-                        stg.transaction_time,
-                        stg.transaction_hour,
-                        stg.amount,
-                        stg.is_debit,
-                        stg.balance_after,
-                        stg.status,
-                        stg.is_fraud_flag,
-                        stg.fraud_score,
-                        stg.fraud_risk_band,
-                        stg.is_weekend,
-                        stg.is_night_transaction,
-                        stg.amount_band,
-                        stg.daily_txn_count,
-                        stg.daily_spend_total,
-                        stg.reference,
-                        stg.description,
-                        stg.channel,
-                        :batch_id
-                    FROM stg_fact_transactions stg
-                    LEFT JOIN dim_accounts          a ON stg.account_id   = a.account_id AND a.scd_is_current = TRUE
-                    LEFT JOIN dim_merchants         m ON stg.merchant_id  = m.merchant_id
-                    LEFT JOIN dim_transaction_type  t ON stg.transaction_type = t.txn_type_name
-                    LEFT JOIN dim_branches          b ON a.branch_key = b.branch_key
-                    ON CONFLICT DO NOTHING
-                """)
+            INSERT INTO fact_transactions (
+                date_key, account_key, customer_key, merchant_key, branch_key,
+                txn_type_key, transaction_id, transaction_date, transaction_time,
+                transaction_hour, amount, is_debit, balance_after, status,
+                is_fraud_flag, fraud_score, fraud_risk_band, is_weekend,
+                is_night_transaction, amount_band, daily_txn_count,
+                daily_spend_total, reference, description, channel, dw_batch_id
+            )
+            SELECT
+                TO_CHAR(stg.transaction_date, 'YYYYMMDD')::INT  AS date_key,
+                a.account_key,
+                a.customer_key,
+                m.merchant_key,
+                b.branch_key,
+                t.txn_type_key,
+                stg.transaction_id,
+                stg.transaction_date,
+                stg.transaction_time,
+                stg.transaction_hour,
+                stg.amount,
+                stg.is_debit,
+                stg.balance_after,
+                stg.status,
+                stg.is_fraud_flag,
+                stg.fraud_score,
+                stg.fraud_risk_band,
+                stg.is_weekend,
+                stg.is_night_transaction,
+                stg.amount_band,
+                stg.daily_txn_count,
+                stg.daily_spend_total,
+                stg.reference,
+                stg.description,
+                stg.channel,
+                :batch_id
+            FROM stg_fact_transactions stg
+            LEFT JOIN dim_accounts          a ON stg.account_id   = a.account_id AND a.scd_is_current = TRUE
+            LEFT JOIN dim_merchants         m ON stg.merchant_id  = m.merchant_id
+            LEFT JOIN dim_transaction_type  t ON stg.transaction_type = t.txn_type_name
+            LEFT JOIN dim_branches          b ON a.branch_key = b.branch_key
+            ON CONFLICT DO NOTHING
+        """)
 
         with self.engine.begin() as conn:
             conn.execute(sql, {'batch_id': self.batch_id})
