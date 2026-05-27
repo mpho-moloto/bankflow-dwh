@@ -221,7 +221,7 @@ CREATE UNLOGGED TABLE IF NOT EXISTS stg_fact_transactions (
     amount               NUMERIC(15, 2),
     is_debit             BOOLEAN,
     balance_after        NUMERIC(15, 2),
-    status               VARCHAR(20),
+    status               VARCHAR(50),
     is_fraud_flag        BOOLEAN,
     fraud_score          NUMERIC(4, 3),    
     fraud_risk_band      VARCHAR(20),
@@ -257,7 +257,7 @@ CREATE TABLE IF NOT EXISTS fact_transactions (
     amount               NUMERIC(15, 2) NOT NULL,
     is_debit             BOOLEAN,                -- TRUE = money leaves
     balance_after        NUMERIC(15, 2),
-    status               VARCHAR(20),            -- 'Completed', 'Declined', etc.
+    status               VARCHAR(50),            -- 'Completed', 'Declined', etc.
     is_fraud_flag        BOOLEAN  DEFAULT FALSE,
     fraud_score          NUMERIC(4, 3),          
     fraud_risk_band      VARCHAR(20),            -- 'Low', 'Medium', 'High', 'Critical'
